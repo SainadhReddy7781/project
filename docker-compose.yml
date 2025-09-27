@@ -1,0 +1,70 @@
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: fitness-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpass
+      MYSQL_DATABASE: fitnessdb
+      MYSQL_USER: fitnessuser
+      MYSQL_PASSWORD: fitnesspass
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+    networks:
+      - fitness-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      timeout: 20s
+      retries: 10
+
+  backend:
+    build: 
+      context: ./fitness-tracker-backend
+      dockerfile: Dockerfile
+    container_name: fitness-backend
+    restart: unless-stopped
+    ports:
+      - "8081:8081"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/fitnessdb?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+      SPRING_DATASOURCE_USERNAME: fitnessuser
+      SPRING_DATASOURCE_PASSWORD: fitnesspass
+      SPRING_JPA_HIBERNATE_DDL_AUTO: update
+      SPRING_JPA_SHOW_SQL: "true"
+      SPRING_JPA_PROPERTIES_HIBERNATE_DIALECT: org.hibernate.dialect.MySQLDialect
+      SERVER_PORT: 8081
+    networks:
+      - fitness-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
+
+  frontend:
+    build: 
+      context: ./fitness-tracker-frontend
+      dockerfile: Dockerfile
+    container_name: fitness-frontend
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - fitness-network
+
+volumes:
+  mysql-data:
+    driver: local
+
+networks:
+  fitness-network:
+    driver: bridge
